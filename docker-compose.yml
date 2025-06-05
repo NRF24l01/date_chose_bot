@@ -7,7 +7,6 @@ services:
     env_file:
       - .env
     volumes:
-      - ./votes.db:/app/votes.db
-      - ./bot.log:/app/bot.log
+      - .:/app
     environment:
       - TZ=Europe/Moscow
