@@ -27,7 +27,7 @@ db.init_db()
 
 bot = Bot(
     token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="Markdown")
+    default=DefaultBotProperties(parse_mode="HTML")
 )
 dp = Dispatcher()
 router = Router()
@@ -53,10 +53,11 @@ def human_date(date_iso: str) -> str:
     return f"{d.day} {months[d.month-1]} ({days_ru[d.weekday()]})"
 
 def user_link(user_id: int, username: str = None) -> str:
+    # HTML-ссылка на пользователя для Telegram
     if username:
-        return f'[пользователь](tg://user?id={user_id}) ({username})'
+        return f'<a href="tg://user?id={user_id}">{username}</a>'
     else:
-        return f'[пользователь](tg://user?id={user_id})'
+        return f'<a href="tg://user?id={user_id}">{user_id}</a>'
 
 def build_dates_keyboard(selected, page=0):
     dates = get_month_dates()
@@ -88,12 +89,12 @@ def build_dates_keyboard(selected, page=0):
 @router.message(Command("help"))
 async def help_command(msg: types.Message):
     text = (
-        "*Доступные команды:*\n\n"
+        "<b>Доступные команды:</b>\n\n"
         "/start — начать или обновить голосование\n"
         "/vote — выбрать или изменить даты\n"
         "/status — посмотреть выбранные вами даты\n"
         "/help — показать это справочное сообщение\n\n"
-        "*Для администратора:*\n"
+        "<b>Для администратора:</b>\n"
         "/votes — список пользователей и их выбор\n"
         "/results — количество голосов по каждой дате\n"
         "/results_csv — выгрузка результатов в CSV-файл\n"
@@ -108,7 +109,7 @@ async def start_vote(msg: types.Message):
     kb = build_dates_keyboard(selected, 0)
     logging.info(f"User {msg.from_user.id} ({msg.from_user.username}) started vote. Current selection: {selected}")
     await msg.answer(
-        "Выберите даты, когда вы *МОЖЕТЕ* прийти на пикник.\n"
+        "Выберите даты, когда вы <b>МОЖЕТЕ</b> прийти на пикник.\n"
         "Можно выбрать несколько дат, выбранные отмечаются галочкой.\n"
         "Нажмите 'Готово ✅' когда закончите.\n\n"
         "Чтобы изменить свой выбор позже — просто снова отправьте /vote.",
@@ -154,12 +155,13 @@ async def handle_done(call: types.CallbackQuery):
             "\n\nЕсли хотите изменить выбор — снова вызовите /vote."
         await call.message.edit_text(txt)
         logging.info(f"User {user_id} ({username}) confirmed: {selected}")
+        # --- Уведомление админу ---
         try:
             admin_text = (
                 f"{user_link(user_id, username)} подтвердил свой выбор:\n"
                 + "\n".join([human_date(d) for d in sorted(selected)])
             )
-            await bot.send_message(ADMIN_ID, admin_text)
+            await bot.send_message(ADMIN_ID, admin_text, parse_mode="HTML")
         except Exception as e:
             logging.error(f"Ошибка отправки сообщения админу: {e}")
     else:
@@ -205,7 +207,7 @@ async def votes(msg: types.Message):
             txt += f"{uname}: {dates}\n"
         else:
             txt += f"{uname}: не проголосовал\n"
-    await msg.answer(f"Кто проголосовал и за что:\n{txt}")
+    await msg.answer(f"Кто проголосовал и за что:\n{txt}", parse_mode="HTML")
     logging.info("Admin requested /votes")
 
 @router.message(Command("results"))
@@ -227,15 +229,10 @@ async def results_csv(msg: types.Message):
         return
     votes = db.get_votes_by_date()
     all_votes = db.get_all_votes()
-    # Соберем данные по пользователям для вывода ФИО, username и id
+    # Соберем данные по пользователям для вывода username и id (fullname оставить пустым)
     users_info = {}
     for user_id, username, vote_date in all_votes:
-        # Для каждой даты у пользователя может быть много строк, но имя и username одни, поэтому запомним для user_id
         if user_id not in users_info:
-            user_fullname = ""
-            # В aiogram username - str, ФИО - msg.from_user.full_name
-            # Но в базе только user_id и username, ФИО не сохранялось.
-            # Поэтому будем только username, id, а ФИО оставить пустым если нет.
             users_info[user_id] = {"username": username or "", "fullname": ""}
     # дата -> [(user_id, username, fullname)]
     votes_per_date = {}
@@ -250,7 +247,6 @@ async def results_csv(msg: types.Message):
         writer.writerow(["Дата", "Голосов", "Имя", "Username", "ID"])
         for d, cnt in votes:
             users = votes_per_date.get(d, [])
-            # На случай если никто не выбрал дату, users может быть пустым
             if not users:
                 writer.writerow([human_date(d), "0", "", "", ""])
             else:
@@ -286,7 +282,7 @@ async def not_voted(msg: types.Message):
     for user_id in not_voted:
         uname = [row[1] for row in all_data if row[0] == user_id][0]
         txt += f"{user_link(user_id, uname)}\n"
-    await msg.answer("Не проголосовали:\n" + txt)
+    await msg.answer("Не проголосовали:\n" + txt, parse_mode="HTML")
     logging.info("Admin requested /not_voted")
 
 async def main():
